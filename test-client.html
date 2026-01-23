@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Redaction Server - Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            margin-bottom: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .button:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+
+        .button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .button.analyze {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .file-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .file-info h3 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 14px;
+        }
+
+        .stat-label {
+            color: #666;
+        }
+
+        .stat-value {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .preview-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .preview-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .preview-box {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+
+        .preview-box h4 {
+            background: #667eea;
+            color: white;
+            padding: 10px;
+            margin: 0;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .preview-box iframe,
+        .preview-box embed {
+            width: 100%;
+            height: 400px;
+            border: none;
+            display: block;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .preview-actions button {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                max-width: 100%;
+            }
+
+            .preview-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Privacy Redaction</h1>
+        <p class="subtitle">Upload a PDF to automatically redact phone numbers and email addresses</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📄</div>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="font-size: 12px; color: #999; margin-top: 5px;">PDF files only (max 10MB)</p>
+        </div>
+
+        <input type="file" id="fileInput" accept=".pdf" />
+
+        <button class="button" id="redactBtn" disabled>
+            Redact & Download
+        </button>
+
+        <button class="button analyze" id="analyzeBtn" disabled>
+            Analyze Only
+        </button>
+
+        <div class="spinner" id="spinner"></div>
+
+        <div class="status" id="status"></div>
+
+        <div class="file-info" id="fileInfo"></div>
+
+        <div class="preview-section" id="previewSection">
+            <h3>PDF Preview</h3>
+            <div class="preview-container">
+                <div class="preview-box">
+                    <h4>Original PDF</h4>
+                    <iframe id="originalPreview"></iframe>
+                </div>
+                <div class="preview-box">
+                    <h4>Redacted PDF</h4>
+                    <iframe id="redactedPreview"></iframe>
+                </div>
+            </div>
+            <div class="preview-actions">
+                <button class="button" id="downloadBtn" style="display: none;">
+                    Download Redacted PDF
+                </button>
+                <button class="button analyze" id="closePreviewBtn">
+                    Close Preview
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const redactBtn = document.getElementById('redactBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const status = document.getElementById('status');
+        const fileInfo = document.getElementById('fileInfo');
+        const spinner = document.getElementById('spinner');
+        const previewSection = document.getElementById('previewSection');
+        const originalPreview = document.getElementById('originalPreview');
+        const redactedPreview = document.getElementById('redactedPreview');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const closePreviewBtn = document.getElementById('closePreviewBtn');
+
+        let selectedFile = null;
+        let redactedPdfBlob = null;
+        const SERVER_URL = 'http://localhost:3000';
+
+        // Click to upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                showStatus('Please select a PDF file', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('File size must be less than 10MB', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            uploadArea.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><span style="font-size: 12px; color: #999;">${(file.size / 1024).toFixed(2)} KB</span>`;
+            redactBtn.disabled = false;
+            analyzeBtn.disabled = false;
+            hideStatus();
+            hideFileInfo();
+        }
+
+        // Redact button
+        redactBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('pdf', selectedFile);
+
+            showSpinner();
+            hideStatus();
+            hideFileInfo();
+            hidePreview();
+            redactBtn.disabled = true;
+            analyzeBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${SERVER_URL}/redact`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to redact PDF');
+                }
+
+                // Get stats from headers
+                const stats = response.headers.get('X-Redaction-Stats');
+                const processingTime = response.headers.get('X-Processing-Time');
+
+                // Get the redacted PDF as ArrayBuffer first, then create blob with explicit type
+                const arrayBuffer = await response.arrayBuffer();
+
+                // Debug logging
+                console.log('Response headers:', {
+                    contentType: response.headers.get('Content-Type'),
+                    contentLength: response.headers.get('Content-Length'),
+                    stats: stats,
+                    processingTime: processingTime
+                });
+                console.log('Received ArrayBuffer size:', arrayBuffer.byteLength);
+
+                // Verify data is not empty
+                if (arrayBuffer.byteLength === 0) {
+                    throw new Error('Received empty PDF from server');
+                }
+
+                // Verify data is not suspiciously small (likely corrupted)
+                if (arrayBuffer.byteLength < 500) {
+                    throw new Error('Received corrupted or blank PDF from server (file too small)');
+                }
+
+                // Verify PDF magic bytes (%PDF-)
+                const headerBytes = new Uint8Array(arrayBuffer.slice(0, 5));
+                const pdfHeader = String.fromCharCode(...headerBytes);
+                console.log('PDF header bytes:', pdfHeader);
+                if (!pdfHeader.startsWith('%PDF')) {
+                    throw new Error('Received invalid response - not a valid PDF (missing PDF header)');
+                }
+
+                // Create blob with explicit PDF MIME type to ensure proper handling
+                const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+                redactedPdfBlob = blob;
+
+                console.log('Redacted PDF blob:', {
+                    size: blob.size,
+                    type: blob.type
+                });
+
+                // Show statistics
+                if (stats) {
+                    const statsObj = JSON.parse(stats);
+                    showFileInfo(statsObj, processingTime);
+                    showStatus(`Successfully redacted ${statsObj.totalRedactions} items`, 'success');
+                } else {
+                    showStatus('PDF redacted successfully!', 'success');
+                }
+
+                // Show preview
+                showPreview(selectedFile, blob);
+
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                hideSpinner();
+                redactBtn.disabled = false;
+                analyzeBtn.disabled = false;
+            }
+        });
+
+        // Analyze button
+        analyzeBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('pdf', selectedFile);
+
+            showSpinner();
+            hideStatus();
+            hideFileInfo();
+            redactBtn.disabled = true;
+            analyzeBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${SERVER_URL}/analyze`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to analyze PDF');
+                }
+
+                if (data.found) {
+                    showFileInfo(data.statistics);
+                    showStatus('Analysis complete. PII detected.', 'info');
+                } else {
+                    showStatus('No personal information found in the document.', 'success');
+                }
+
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                hideSpinner();
+                redactBtn.disabled = false;
+                analyzeBtn.disabled = false;
+            }
+        });
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+        }
+
+        function hideStatus() {
+            status.style.display = 'none';
+        }
+
+        function showFileInfo(stats, processingTime) {
+            fileInfo.innerHTML = `
+                <h3>Redaction Statistics</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Total Redactions:</span>
+                    <span class="stat-value">${stats.totalRedactions}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Email Addresses:</span>
+                    <span class="stat-value">${stats.emails}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Phone Numbers:</span>
+                    <span class="stat-value">${stats.phones}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Pages Affected:</span>
+                    <span class="stat-value">${stats.pagesAffected}</span>
+                </div>
+                ${processingTime ? `
+                <div class="stat-item">
+                    <span class="stat-label">Processing Time:</span>
+                    <span class="stat-value">${processingTime}ms</span>
+                </div>
+                ` : ''}
+            `;
+            fileInfo.style.display = 'block';
+        }
+
+        function hideFileInfo() {
+            fileInfo.style.display = 'none';
+        }
+
+        function showSpinner() {
+            spinner.style.display = 'block';
+        }
+
+        function hideSpinner() {
+            spinner.style.display = 'none';
+        }
+
+        function showPreview(originalFile, redactedBlob) {
+            console.log('showPreview called with:', {
+                originalFile: { name: originalFile.name, size: originalFile.size, type: originalFile.type },
+                redactedBlob: { size: redactedBlob.size, type: redactedBlob.type }
+            });
+
+            // Create object URLs for both PDFs
+            const originalUrl = URL.createObjectURL(originalFile);
+            const redactedUrl = URL.createObjectURL(redactedBlob);
+
+            console.log('Created blob URLs:', { originalUrl, redactedUrl });
+
+            // Set iframe sources
+            originalPreview.src = originalUrl;
+            redactedPreview.src = redactedUrl;
+
+            // Add load event listeners for debugging
+            originalPreview.onload = () => console.log('Original PDF loaded successfully');
+            originalPreview.onerror = (e) => console.error('Original PDF failed to load:', e);
+            redactedPreview.onload = () => console.log('Redacted PDF loaded successfully');
+            redactedPreview.onerror = (e) => console.error('Redacted PDF failed to load:', e);
+
+            // Show preview section
+            previewSection.style.display = 'block';
+            downloadBtn.style.display = 'block';
+
+            // Scroll to preview
+            setTimeout(() => {
+                previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
+        }
+
+        function hidePreview() {
+            previewSection.style.display = 'none';
+            downloadBtn.style.display = 'none';
+
+            // Clean up object URLs
+            if (originalPreview.src) {
+                URL.revokeObjectURL(originalPreview.src);
+                originalPreview.src = '';
+            }
+            if (redactedPreview.src) {
+                URL.revokeObjectURL(redactedPreview.src);
+                redactedPreview.src = '';
+            }
+        }
+
+        // Download button handler
+        downloadBtn.addEventListener('click', () => {
+            if (!redactedPdfBlob) return;
+
+            const url = URL.createObjectURL(redactedPdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `redacted_${selectedFile.name}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showStatus('Redacted PDF downloaded successfully!', 'success');
+        });
+
+        // Close preview button handler
+        closePreviewBtn.addEventListener('click', () => {
+            hidePreview();
+        });
+
+        // Update handleFileSelect to hide preview when new file selected
+        const originalHandleFileSelect = handleFileSelect;
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                showStatus('Please select a PDF file', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('File size must be less than 10MB', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            uploadArea.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><span style="font-size: 12px; color: #999;">${(file.size / 1024).toFixed(2)} KB</span>`;
+            redactBtn.disabled = false;
+            analyzeBtn.disabled = false;
+            hideStatus();
+            hideFileInfo();
+            hidePreview();
+        }
+    </script>
+</body>
+</html>
