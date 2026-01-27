@@ -132,12 +132,13 @@ const analyzePDF_handler = async (req, res) => {
         page: page.pageNumber,
         items: page.items.map((item) => ({
           type: item.type,
-          text: item.text,
+          // SECURITY: Don't return actual PII text - only metadata
+          textLength: item.text.length,
           coordinates: {
-            x: item.x,
-            y: item.y,
-            width: item.width,
-            height: item.height,
+            x: Math.round(item.x),
+            y: Math.round(item.y),
+            width: Math.round(item.width),
+            height: Math.round(item.height),
           },
         })),
       })),

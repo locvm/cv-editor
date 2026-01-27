@@ -12,8 +12,27 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Import routes
+// Import routes and controllers
 const editorRoutes = require("./src/routes/editor");
+const multer = require("multer");
+const {
+  redactPDF_handler,
+  analyzePDF_handler,
+} = require("./src/controllers/editorController");
+
+// Configure multer for root-level routes
+const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"), false);
+    }
+  },
+});
 
 // Security Middleware
 app.use(helmet());
@@ -32,7 +51,11 @@ app.use(
   }),
 );
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+
+// Serve only the test client HTML (not entire directory for security)
+app.get("/test-client.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "test-client.html"));
+});
 
 // ============================================
 // ROUTES
@@ -65,6 +88,29 @@ app.get("/api/health", (req, res) => {
 app.use("/editor", editorRoutes);
 app.use("/api/editor", editorRoutes);
 
+// Mount specific endpoints at root level for backward compatibility
+app.post("/analyze", upload.single("pdf"), analyzePDF_handler);
+app.post("/redact", upload.single("pdf"), redactPDF_handler);
+
+// Multer error handler for root-level routes
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error: "File too large",
+        message: `Maximum file size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+      });
+    }
+  }
+  if (error.message === "Only PDF files are allowed") {
+    return res.status(400).json({
+      error: "Invalid file type",
+      message: "Only PDF files are allowed",
+    });
+  }
+  next(error);
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -75,9 +121,13 @@ app.use((req, res) => {
 // Error handler
 app.use((error, req, res, next) => {
   console.error("Server error:", error);
+
+  // In production, don't expose error details
+  const isProduction = process.env.NODE_ENV === "production";
+
   res.status(500).json({
     error: "Internal server error",
-    message: error.message,
+    message: isProduction ? "An error occurred while processing your request" : error.message,
   });
 });
 
