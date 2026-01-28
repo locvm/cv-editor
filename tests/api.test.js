@@ -39,7 +39,7 @@ describe("API Endpoints", () => {
       const response = await request(app)
         .post("/api/editor/redact")
         .field("name", "test")
-        .attach("pdf", Buffer.from("not a pdf"), "test.txt")
+        .attach("file", Buffer.from("not a pdf"), "test.txt")
         .expect(400);
 
       expect(response.body).toHaveProperty("error");
@@ -55,7 +55,7 @@ describe("API Endpoints", () => {
 
       const response = await request(app)
         .post("/api/editor/redact")
-        .attach("pdf", testPdfPath)
+        .attach("file", testPdfPath)
         .expect(200)
         .expect("Content-Type", "application/pdf");
 
@@ -93,7 +93,7 @@ describe("API Endpoints", () => {
 
       const response = await request(app)
         .post("/api/editor/redact")
-        .attach("pdf", Buffer.from(pdfBytes), "test.pdf")
+        .attach("file", Buffer.from(pdfBytes), "test.pdf")
         .expect(200);
 
       expect(response.body).toHaveProperty("message");
@@ -120,7 +120,7 @@ describe("API Endpoints", () => {
 
       const response = await request(app)
         .post("/api/editor/analyze")
-        .attach("pdf", testPdfPath)
+        .attach("file", testPdfPath)
         .expect(200)
         .expect("Content-Type", /json/);
 
@@ -145,7 +145,7 @@ describe("API Endpoints", () => {
 
       const response = await request(app)
         .post("/api/editor/analyze")
-        .attach("pdf", testPdfPath)
+        .attach("file", testPdfPath)
         .expect(200);
 
       if (response.body.found && response.body.details.length > 0) {
@@ -178,7 +178,7 @@ describe("API Endpoints", () => {
 
       const response = await request(app)
         .post("/api/editor/redact")
-        .attach("pdf", largeBuffer, "large.pdf");
+        .attach("file", largeBuffer, "large.pdf");
 
       // Should return 413 or 400 depending on multer config
       expect([400, 413]).toContain(response.status);

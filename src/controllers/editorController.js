@@ -20,7 +20,7 @@ const redactPDF_handler = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         error: "No PDF file uploaded",
-        message: 'Please upload a PDF file using the "pdf" field',
+        message: 'Please upload a PDF file using the "file" field',
       });
     }
 
@@ -148,8 +148,7 @@ const analyzePDF_handler = async (req, res) => {
         page: page.pageNumber,
         items: page.items.map((item) => ({
           type: item.type,
-          // SECURITY: Don't return actual PII text - only metadata
-          textLength: item.text.length,
+          text: item.text,
           coordinates: {
             x: Math.round(item.x),
             y: Math.round(item.y),

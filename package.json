@@ -6,13 +6,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "jest --coverage",
-    "test:watch": "jest --watch",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:patterns": "jest tests/patterns.test.js",
-    "test:api": "jest tests/api.test.js",
-    "test:pdf": "jest tests/pdfProcessing.test.js",
-    "test:security": "jest tests/security.test.js",
-    "test:edge": "jest tests/edgeCases.test.js",
+    "test:api": "NODE_OPTIONS='--experimental-vm-modules' jest tests/api.test.js",
+    "test:pdf": "NODE_OPTIONS='--experimental-vm-modules' jest tests/pdfProcessing.test.js",
+    "test:security": "NODE_OPTIONS='--experimental-vm-modules' jest tests/security.test.js",
+    "test:edge": "NODE_OPTIONS='--experimental-vm-modules' jest tests/edgeCases.test.js",
     "vercel-build": "echo 'Building for Vercel serverless...'"
   },
   "keywords": [

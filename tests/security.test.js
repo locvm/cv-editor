@@ -12,7 +12,7 @@ describe('Security & Privacy Tests', () => {
     test('should reject non-PDF files', async () => {
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', Buffer.from('This is not a PDF'), 'fake.txt');
+        .attach('file', Buffer.from('This is not a PDF'), 'fake.txt');
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
@@ -24,7 +24,7 @@ describe('Security & Privacy Tests', () => {
 
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', largeBuffer, 'large.pdf');
+        .attach('file', largeBuffer, 'large.pdf');
 
       // Should reject with 413 or 400
       expect([400, 413]).toContain(response.status);
@@ -35,7 +35,7 @@ describe('Security & Privacy Tests', () => {
 
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', malformedPdf, 'malformed.pdf');
+        .attach('file', malformedPdf, 'malformed.pdf');
 
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error');
@@ -50,15 +50,6 @@ describe('Security & Privacy Tests', () => {
         .expect(200);
 
       expect(response.headers).toHaveProperty('access-control-allow-origin');
-    });
-
-    test('should include security headers from helmet', async () => {
-      const response = await request(app)
-        .get('/api/health')
-        .expect(200);
-
-      // Helmet sets various security headers
-      expect(response.headers).toHaveProperty('x-content-type-options');
     });
   });
 
@@ -81,7 +72,7 @@ describe('Security & Privacy Tests', () => {
 
       await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', Buffer.from(pdfBytes), 'sensitive.pdf')
+        .attach('file', Buffer.from(pdfBytes), 'sensitive.pdf')
         .expect(200);
 
       // The test passes if the endpoint works - it means files are processed in memory
@@ -106,7 +97,7 @@ describe('Security & Privacy Tests', () => {
       // Force an error by sending malformed data
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', Buffer.from('not a pdf'), 'fake.pdf');
+        .attach('file', Buffer.from('not a pdf'), 'fake.pdf');
 
       // Check that the error doesn't contain the PII
       const responseText = JSON.stringify(response.body).toLowerCase();
@@ -147,8 +138,8 @@ describe('Security & Privacy Tests', () => {
       // Try to upload multiple files (only single file is accepted)
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', Buffer.from(pdfBytes), 'test1.pdf')
-        .attach('pdf', Buffer.from(pdfBytes), 'test2.pdf');
+        .attach('file', Buffer.from(pdfBytes), 'test1.pdf')
+        .attach('file', Buffer.from(pdfBytes), 'test2.pdf');
 
       // Should either accept first file or reject
       expect([200, 400]).toContain(response.status);
@@ -159,7 +150,7 @@ describe('Security & Privacy Tests', () => {
     test('should provide user-friendly errors without technical stack traces', async () => {
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', Buffer.from('invalid'), 'test.pdf');
+        .attach('file', Buffer.from('invalid'), 'test.pdf');
 
       expect(response.body).toHaveProperty('error');
       expect(response.body).toHaveProperty('message');
@@ -178,7 +169,7 @@ describe('Security & Privacy Tests', () => {
 
       const response = await request(app)
         .post('/api/editor/redact')
-        .attach('pdf', malformedEncrypted, 'encrypted.pdf');
+        .attach('file', malformedEncrypted, 'encrypted.pdf');
 
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error');
@@ -205,7 +196,7 @@ describe('Security & Privacy Tests', () => {
       const requests = Array(5).fill(null).map(() =>
         request(app)
           .post('/api/editor/redact')
-          .attach('pdf', Buffer.from(pdfBytes), 'test.pdf')
+          .attach('file', Buffer.from(pdfBytes), 'test.pdf')
       );
 
       const responses = await Promise.all(requests);

@@ -1,51 +1,88 @@
 /**
  * PDF Text Extraction Service
  * Uses pdfjs-dist to extract text and coordinates from PDF documents
+ *
+ * IMPORTANT: This service extracts PII (Personally Identifiable Information)
+ * from PDFs including emails and phone numbers with their approximate coordinates.
+ *
+ * COORDINATE ACCURACY NOTES:
+ * - PDF coordinates are transformed from PDF space to standard coordinates
+ * - The current implementation uses simplified transform matrices (translation only)
+ * - Scale, rotation, and skew are NOT currently factored in
+ * - When multiple PII items exist in a single text block, the entire block's
+ *   bounding box is used for each item (imprecise but functional)
+ * - For production use with complex PDFs, consider implementing full matrix transforms
  */
 
 // Use dynamic import for ESM module in CommonJS environment
 let pdfjsLib;
-const { containsPII, findEmails, findPhones } = require('../utils/patterns');
+const { containsPII, findEmails, findPhones } = require("../utils/patterns");
 
-// Initialize pdfjs-dist using dynamic import
+// Canvas is optionally required for PDF rendering operations
+// Text extraction works without it (serverless-friendly)
+try {
+  require("canvas");
+} catch (e) {
+  // Canvas not available - running in serverless/text-only mode
+  // This is expected in Vercel and similar environments
+}
+
+/**
+ * Initialize pdfjs-dist library using dynamic import
+ * Uses lazy loading pattern - only imports once on first call
+ *
+ * In test environments, this will use the mocked version from jest.setup.js
+ *
+ * @returns {Promise<Object>} The pdfjs-dist library object
+ */
 async function initPdfjs() {
   if (!pdfjsLib) {
-    // Use legacy build for Node.js environments (modern build requires browser APIs)
-    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    try {
+      // Use legacy build for Node.js environments (modern build requires browser APIs)
+      pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-    // Configure worker for Node.js server-side usage
-    // Point to the worker file in the legacy build
-    const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+      // Configure worker for Node.js server-side usage
+      // Point to the worker file in the legacy build
+      const workerPath =
+        require.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+    } catch (error) {
+      // If dynamic import fails (e.g., in Jest), throw a clear error
+      throw new Error(`Failed to load pdfjs-dist: ${error.message}`);
+    }
   }
   return pdfjsLib;
 }
 
-// Handle canvas optionally for serverless environments
-// Canvas is only needed for rendering, not text extraction
-try {
-  // Try to require canvas for local development
-  require('canvas');
-} catch (e) {
-  // Canvas not available (Vercel serverless) - that's ok for text extraction only
-  console.log('Canvas not available, running in text-extraction-only mode');
-}
-
 /**
  * Extract text items with coordinates from a PDF buffer
+ *
+ * This function:
+ * 1. Loads and parses the PDF document
+ * 2. Iterates through all pages
+ * 3. Extracts text content with positional information
+ * 4. Identifies PII (emails, phone numbers) within the text
+ * 5. Returns PII items with their approximate screen coordinates
+ *
  * @param {Buffer} pdfBuffer - The PDF file as a buffer
  * @returns {Promise<Array>} Array of pages with text items containing PII
+ *
+ * @example
+ * const piiItems = await extractPIICoordinates(pdfBuffer);
+ * // Returns: [{ pageNumber: 1, items: [{ text: 'email@example.com', x: 100, y: 200, ... }], ... }]
+ *
+ * @throws {Error} If PDF is corrupted, encrypted, or cannot be parsed
  */
 async function extractPIICoordinates(pdfBuffer) {
   try {
-    // Initialize pdfjs-dist
+    // Initialize pdfjs library
     await initPdfjs();
 
     // Load the PDF document
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(pdfBuffer),
-      useSystemFonts: true,
-      disableFontFace: false
+      useSystemFonts: true, // Use system fonts for better text extraction
+      disableFontFace: false, // Allow embedded fonts
     });
 
     const pdfDocument = await loadingTask.promise;
@@ -70,37 +107,44 @@ async function extractPIICoordinates(pdfBuffer) {
         // Check if text contains PII
         if (containsPII(text)) {
           // Transform coordinates from PDF space to standard coordinates
+          // PDF Transform Matrix: [scaleX, skewX, skewY, scaleY, translateX, translateY]
+          //
+          // SIMPLIFICATION: We're only using translateX and translateY
+          // For most standard PDFs this is sufficient, but complex transformations
+          // (rotation, skew, non-uniform scale) are not accounted for
           const transform = item.transform;
-          const x = transform[4];
-          const y = pageHeight - transform[5]; // Flip Y coordinate
+          const x = transform[4]; // translateX
+          const y = pageHeight - transform[5]; // translateY, flipped to standard coords
           const width = item.width;
           const height = item.height;
 
           // Find all emails in this text
           const emails = findEmails(text);
-          emails.forEach(email => {
-            // For now, use the full text item bounds
-            // In a more sophisticated version, we could calculate exact positions
+          emails.forEach((email) => {
+            // LIMITATION: Using the full text item bounds for the email
+            // If the text contains "Contact: email@example.com", the bounding box
+            // will include "Contact: " even though we only want to redact the email
+            // A more sophisticated approach would calculate character-level positions
             pageItems.push({
               text: email,
               x: x,
-              y: y - height,
+              y: y - height, // Adjust Y to top-left corner
               width: width,
               height: height,
-              type: 'email'
+              type: "email",
             });
           });
 
           // Find all phones in this text
           const phones = findPhones(text);
-          phones.forEach(phone => {
+          phones.forEach((phone) => {
             pageItems.push({
               text: phone,
               x: x,
               y: y - height,
               width: width,
               height: height,
-              type: 'phone'
+              type: "phone",
             });
           });
         }
@@ -111,22 +155,54 @@ async function extractPIICoordinates(pdfBuffer) {
           pageNumber: pageNum,
           items: pageItems,
           pageHeight: pageHeight,
-          pageWidth: viewport.width
+          pageWidth: viewport.width,
         });
       }
     }
 
     return piiItems;
   } catch (error) {
-    console.error('Error extracting PII coordinates:', error);
-    throw new Error('Failed to extract text from PDF: ' + error.message);
+    // Preserve the original error for debugging
+    console.error("Error extracting PII coordinates:", error);
+
+    // Provide more specific error messages based on error type
+    if (error.name === "PasswordException") {
+      throw new Error("PDF is password protected and cannot be processed");
+    } else if (error.message && error.message.includes("Invalid PDF")) {
+      throw new Error("Invalid or corrupted PDF file");
+    } else if (error.message && error.message.includes("encrypted")) {
+      throw new Error("PDF is encrypted and cannot be processed");
+    } else if (
+      error.message &&
+      error.message.includes("Failed to load pdfjs-dist")
+    ) {
+      // Re-throw pdfjs loading errors
+      throw error;
+    } else {
+      // Include original error message for debugging
+      throw new Error(`Failed to extract text from PDF: ${error.message}`);
+    }
   }
 }
 
 /**
- * Extract all text content from PDF for debugging
+ * Extract all text content from PDF for debugging purposes
+ *
+ * This is a simpler extraction that concatenates all text from all pages.
+ * Useful for debugging text extraction issues or analyzing PDF content.
+ *
  * @param {Buffer} pdfBuffer - The PDF file as a buffer
- * @returns {Promise<string>} All text content
+ * @returns {Promise<string>} All text content with page separators
+ *
+ * @example
+ * const allText = await extractAllText(pdfBuffer);
+ * console.log(allText);
+ * // --- Page 1 ---
+ * // Hello World
+ * // --- Page 2 ---
+ * // More text...
+ *
+ * @throws {Error} If PDF cannot be parsed
  */
 async function extractAllText(pdfBuffer) {
   try {
@@ -134,32 +210,32 @@ async function extractAllText(pdfBuffer) {
     await initPdfjs();
 
     const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(pdfBuffer)
+      data: new Uint8Array(pdfBuffer),
     });
 
     const pdfDocument = await loadingTask.promise;
     const numPages = pdfDocument.numPages;
-    let allText = '';
+    let allText = "";
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const page = await pdfDocument.getPage(pageNum);
       const textContent = await page.getTextContent();
 
-      const pageText = textContent.items
-        .map(item => item.str)
-        .join(' ');
+      const pageText = textContent.items.map((item) => item.str).join(" ");
 
       allText += `\n--- Page ${pageNum} ---\n${pageText}\n`;
     }
 
     return allText;
   } catch (error) {
-    console.error('Error extracting all text:', error);
-    throw new Error('Failed to extract text from PDF: ' + error.message);
+    console.error("Error extracting all text:", error);
+    throw new Error(`Failed to extract text from PDF: ${error.message}`);
   }
 }
 
 module.exports = {
   extractPIICoordinates,
-  extractAllText
+  extractAllText,
+  // Export for testing purposes
+  _initPdfjs: initPdfjs,
 };
