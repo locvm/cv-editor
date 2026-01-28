@@ -4,10 +4,14 @@
  */
 
 const request = require('supertest');
-const app = require('../server');
+const { app, server } = require('../server');
 const { PDFDocument, StandardFonts } = require('pdf-lib');
 
 describe('Security & Privacy Tests', () => {
+  afterAll((done) => {
+    server.close(done);
+  });
+
   describe('File Upload Security', () => {
     test('should reject non-PDF files', async () => {
       const response = await request(app)

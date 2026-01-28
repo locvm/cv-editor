@@ -112,8 +112,8 @@ app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
 // Start server
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   displayBanner(PORT);
 });
 
-module.exports = app;
+module.exports = { app, server };

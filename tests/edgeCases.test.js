@@ -4,11 +4,15 @@
  */
 
 const request = require('supertest');
-const app = require('../server');
+const { app, server } = require('../server');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { findEmails, findPhones } = require('../src/utils/patterns');
 
 describe('Edge Cases', () => {
+  afterAll((done) => {
+    server.close(done);
+  });
+
   describe('Complex Phone Number Formats', () => {
     test('should detect Canadian phone numbers with various formats', () => {
       const formats = [
