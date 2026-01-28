@@ -3,11 +3,33 @@
  * Uses pdfjs-dist to extract text and coordinates from PDF documents
  */
 
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+// Use dynamic import for ESM module in CommonJS environment
+let pdfjsLib;
 const { containsPII, findEmails, findPhones } = require('../utils/patterns');
 
-// Disable worker for server-side usage
-pdfjsLib.GlobalWorkerOptions.workerSrc = null;
+// Initialize pdfjs-dist using dynamic import
+async function initPdfjs() {
+  if (!pdfjsLib) {
+    // Use legacy build for Node.js environments (modern build requires browser APIs)
+    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+    // Configure worker for Node.js server-side usage
+    // Point to the worker file in the legacy build
+    const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+  }
+  return pdfjsLib;
+}
+
+// Handle canvas optionally for serverless environments
+// Canvas is only needed for rendering, not text extraction
+try {
+  // Try to require canvas for local development
+  require('canvas');
+} catch (e) {
+  // Canvas not available (Vercel serverless) - that's ok for text extraction only
+  console.log('Canvas not available, running in text-extraction-only mode');
+}
 
 /**
  * Extract text items with coordinates from a PDF buffer
@@ -16,6 +38,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = null;
  */
 async function extractPIICoordinates(pdfBuffer) {
   try {
+    // Initialize pdfjs-dist
+    await initPdfjs();
+
     // Load the PDF document
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(pdfBuffer),
@@ -105,6 +130,9 @@ async function extractPIICoordinates(pdfBuffer) {
  */
 async function extractAllText(pdfBuffer) {
   try {
+    // Initialize pdfjs-dist
+    await initPdfjs();
+
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(pdfBuffer)
     });

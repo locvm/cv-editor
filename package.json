@@ -12,7 +12,8 @@
     "test:api": "jest tests/api.test.js",
     "test:pdf": "jest tests/pdfProcessing.test.js",
     "test:security": "jest tests/security.test.js",
-    "test:edge": "jest tests/edgeCases.test.js"
+    "test:edge": "jest tests/edgeCases.test.js",
+    "vercel-build": "echo 'Building for Vercel serverless...'"
   },
   "keywords": [
     "pdf",
@@ -25,14 +26,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "canvas": "^3.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "multer": "^2.0.2",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^3.11.174"
+    "pdfjs-dist": "^5.4.530"
+  },
+  "optionalDependencies": {
+    "canvas": "^3.2.1"
   },
   "devDependencies": {
     "jest": "^30.2.0",

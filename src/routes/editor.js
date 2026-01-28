@@ -26,8 +26,8 @@ const upload = multer({
 
 // Routes
 router.get("/", getEditorUI);
-router.post("/redact", upload.single("pdf"), redactPDF_handler);
-router.post("/analyze", upload.single("pdf"), analyzePDF_handler);
+router.post("/redact", upload.single("file"), redactPDF_handler);
+router.post("/analyze", upload.single("file"), analyzePDF_handler);
 
 // Multer error handler
 router.use((error, req, res, next) => {

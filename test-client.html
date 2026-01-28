@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -166,8 +167,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .preview-section {
@@ -232,6 +238,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>PDF Privacy Redaction</h1>
@@ -298,7 +305,7 @@
 
         let selectedFile = null;
         let redactedPdfBlob = null;
-        const SERVER_URL = 'http://localhost:3000';
+
 
         // Click to upload
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -353,7 +360,7 @@
             if (!selectedFile) return;
 
             const formData = new FormData();
-            formData.append('pdf', selectedFile);
+            formData.append('file', selectedFile);
 
             showSpinner();
             hideStatus();
@@ -363,7 +370,7 @@
             analyzeBtn.disabled = true;
 
             try {
-                const response = await fetch(`${SERVER_URL}/redact`, {
+                const response = await fetch(`${process.env.SERVER_URL}/redact?download=true`, {
                     method: 'POST',
                     body: formData
                 });
@@ -442,7 +449,7 @@
             if (!selectedFile) return;
 
             const formData = new FormData();
-            formData.append('pdf', selectedFile);
+            formData.append('file', selectedFile);
 
             showSpinner();
             hideStatus();
@@ -620,4 +627,5 @@
         }
     </script>
 </body>
+
 </html>

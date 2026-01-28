@@ -1,0 +1,12 @@
+# Test files
+tests/
+coverage/
+*.test.js
+
+# Development files
+.claude/
+.env.example
+jest.config.js
+
+# Documentation (keep README for deployment info)
+# README.md

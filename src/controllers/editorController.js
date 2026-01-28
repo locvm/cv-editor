@@ -71,20 +71,36 @@ const redactPDF_handler = async (req, res) => {
     );
 
     const redactedPdfBuffer = await redactPDF(req.file.buffer, piiItems);
+    const processingTime = Date.now() - startTime;
 
-    // Return redacted PDF
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="redacted_${req.file.originalname}"`,
-    );
-    res.setHeader("Content-Length", redactedPdfBuffer.length);
-    res.setHeader("X-Redaction-Stats", JSON.stringify(stats));
-    res.setHeader("X-Processing-Time", Date.now() - startTime);
+    // Check if client wants download or data response
+    // Default is JSON response for database storage
+    const wantsDownload = req.query.download === "true";
 
-    console.log(`Redaction completed in ${Date.now() - startTime}ms`);
-    console.log(`Sending redacted PDF: ${redactedPdfBuffer.length} bytes`);
-    res.send(redactedPdfBuffer);
+    if (wantsDownload) {
+      // Return as downloadable PDF
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="redacted_${req.file.originalname}"`,
+      );
+      res.setHeader("Content-Length", redactedPdfBuffer.length);
+      res.setHeader("X-Redaction-Stats", JSON.stringify(stats));
+      res.setHeader("X-Processing-Time", processingTime);
+      res.send(redactedPdfBuffer);
+    } else {
+      // Return as JSON with base64-encoded PDF for database storage
+      res.json({
+        success: true,
+        filename: `redacted_${req.file.originalname}`,
+        originalFilename: req.file.originalname,
+        pdf: redactedPdfBuffer.toString("base64"),
+        mimeType: "application/pdf",
+        size: redactedPdfBuffer.length,
+        statistics: stats,
+        processingTime: processingTime,
+      });
+    }
   } catch (error) {
     console.error("Error processing PDF:", error);
     const friendlyError = getUserFriendlyError(error);
