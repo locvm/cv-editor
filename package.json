@@ -31,7 +31,9 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "multer": "^2.0.2",
+    "node-qpdf2": "^6.0.0",
     "pdf-lib": "^1.17.1",
+    "pdf-to-png-converter": "^3.11.0",
     "unpdf": "^1.4.0"
   },
   "optionalDependencies": {

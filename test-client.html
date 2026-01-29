@@ -218,6 +218,27 @@
             display: block;
         }
 
+        .preview-box .image-container {
+            width: 100%;
+            max-height: 600px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+        }
+
+        .preview-box .image-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .preview-box .image-container img:last-child {
+            margin-bottom: 0;
+        }
+
         .preview-actions {
             display: flex;
             gap: 10px;
@@ -267,20 +288,20 @@
         <div class="file-info" id="fileInfo"></div>
 
         <div class="preview-section" id="previewSection">
-            <h3>PDF Preview</h3>
+            <h3>Preview</h3>
             <div class="preview-container">
                 <div class="preview-box">
                     <h4>Original PDF</h4>
                     <iframe id="originalPreview"></iframe>
                 </div>
                 <div class="preview-box">
-                    <h4>Redacted PDF</h4>
-                    <iframe id="redactedPreview"></iframe>
+                    <h4>Redacted Images (PNG)</h4>
+                    <div class="image-container" id="redactedPreview"></div>
                 </div>
             </div>
             <div class="preview-actions">
                 <button class="button" id="downloadBtn" style="display: none;">
-                    Download Redacted PDF
+                    Download Images as ZIP
                 </button>
                 <button class="button analyze" id="closePreviewBtn">
                     Close Preview
@@ -375,7 +396,7 @@
             analyzeBtn.disabled = true;
 
             try {
-                const response = await fetch(`${SERVER_URL}/redact?download=true`, {
+                const response = await fetch(`${SERVER_URL}/redact`, {
                     method: 'POST',
                     body: formData
                 });
@@ -385,60 +406,31 @@
                     throw new Error(error.message || 'Failed to redact PDF');
                 }
 
-                // Get stats from headers
-                const stats = response.headers.get('X-Redaction-Stats');
-                const processingTime = response.headers.get('X-Processing-Time');
+                // Get JSON response with images
+                const data = await response.json();
 
-                // Get the redacted PDF as ArrayBuffer first, then create blob with explicit type
-                const arrayBuffer = await response.arrayBuffer();
-
-                // Debug logging
-                console.log('Response headers:', {
-                    contentType: response.headers.get('Content-Type'),
-                    contentLength: response.headers.get('Content-Length'),
-                    stats: stats,
-                    processingTime: processingTime
+                console.log('Response data:', {
+                    success: data.success,
+                    format: data.format,
+                    pageCount: data.pageCount,
+                    totalSize: data.totalSize,
+                    statistics: data.statistics
                 });
-                console.log('Received ArrayBuffer size:', arrayBuffer.byteLength);
 
-                // Verify data is not empty
-                if (arrayBuffer.byteLength === 0) {
-                    throw new Error('Received empty PDF from server');
+                // Verify we got images
+                if (!data.images || data.images.length === 0) {
+                    throw new Error('No images received from server');
                 }
 
-                // Verify data is not suspiciously small (likely corrupted)
-                if (arrayBuffer.byteLength < 500) {
-                    throw new Error('Received corrupted or blank PDF from server (file too small)');
-                }
-
-                // Verify PDF magic bytes (%PDF-)
-                const headerBytes = new Uint8Array(arrayBuffer.slice(0, 5));
-                const pdfHeader = String.fromCharCode(...headerBytes);
-                console.log('PDF header bytes:', pdfHeader);
-                if (!pdfHeader.startsWith('%PDF')) {
-                    throw new Error('Received invalid response - not a valid PDF (missing PDF header)');
-                }
-
-                // Create blob with explicit PDF MIME type to ensure proper handling
-                const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-                redactedPdfBlob = blob;
-
-                console.log('Redacted PDF blob:', {
-                    size: blob.size,
-                    type: blob.type
-                });
+                // Store the images globally
+                redactedPdfBlob = data;
 
                 // Show statistics
-                if (stats) {
-                    const statsObj = JSON.parse(stats);
-                    showFileInfo(statsObj, processingTime);
-                    showStatus(`Successfully redacted ${statsObj.totalRedactions} items`, 'success');
-                } else {
-                    showStatus('PDF redacted successfully!', 'success');
-                }
+                showFileInfo(data.statistics, data.processingTime);
+                showStatus(data.message || `Successfully redacted ${data.statistics.totalRedactions} items`, 'success');
 
                 // Show preview
-                showPreview(selectedFile, blob);
+                showPreview(selectedFile, data.images);
 
             } catch (error) {
                 showStatus(`Error: ${error.message}`, 'error');
@@ -541,27 +533,37 @@
             spinner.style.display = 'none';
         }
 
-        function showPreview(originalFile, redactedBlob) {
+        function showPreview(originalFile, redactedImages) {
             console.log('showPreview called with:', {
                 originalFile: { name: originalFile.name, size: originalFile.size, type: originalFile.type },
-                redactedBlob: { size: redactedBlob.size, type: redactedBlob.type }
+                redactedImages: { count: redactedImages.length }
             });
 
-            // Create object URLs for both PDFs
+            // Create object URL for original PDF
             const originalUrl = URL.createObjectURL(originalFile);
-            const redactedUrl = URL.createObjectURL(redactedBlob);
 
-            console.log('Created blob URLs:', { originalUrl, redactedUrl });
-
-            // Set iframe sources
+            // Set iframe source for original PDF
             originalPreview.src = originalUrl;
-            redactedPreview.src = redactedUrl;
+
+            // Clear previous images
+            redactedPreview.innerHTML = '';
+
+            // Create img elements for each redacted page
+            redactedImages.forEach((image, index) => {
+                const img = document.createElement('img');
+                img.src = `data:${image.mimeType};base64,${image.data}`;
+                img.alt = `Redacted page ${image.pageNumber}`;
+                img.title = `Page ${image.pageNumber} - ${image.width}x${image.height}px`;
+
+                img.onload = () => console.log(`Redacted image ${index + 1} loaded successfully`);
+                img.onerror = (e) => console.error(`Redacted image ${index + 1} failed to load:`, e);
+
+                redactedPreview.appendChild(img);
+            });
 
             // Add load event listeners for debugging
             originalPreview.onload = () => console.log('Original PDF loaded successfully');
             originalPreview.onerror = (e) => console.error('Original PDF failed to load:', e);
-            redactedPreview.onload = () => console.log('Redacted PDF loaded successfully');
-            redactedPreview.onerror = (e) => console.error('Redacted PDF failed to load:', e);
 
             // Show preview section
             previewSection.style.display = 'block';
@@ -577,31 +579,46 @@
             previewSection.style.display = 'none';
             downloadBtn.style.display = 'none';
 
-            // Clean up object URLs
+            // Clean up object URLs and images
             if (originalPreview.src) {
                 URL.revokeObjectURL(originalPreview.src);
                 originalPreview.src = '';
             }
-            if (redactedPreview.src) {
-                URL.revokeObjectURL(redactedPreview.src);
-                redactedPreview.src = '';
-            }
+
+            // Clear redacted images
+            redactedPreview.innerHTML = '';
         }
 
         // Download button handler
         downloadBtn.addEventListener('click', () => {
-            if (!redactedPdfBlob) return;
+            if (!redactedPdfBlob || !redactedPdfBlob.images) return;
 
-            const url = URL.createObjectURL(redactedPdfBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `redacted_${selectedFile.name}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            const images = redactedPdfBlob.images;
+            const baseName = selectedFile.name.replace('.pdf', '');
 
-            showStatus('Redacted PDF downloaded successfully!', 'success');
+            // Download each image
+            images.forEach((image, index) => {
+                // Convert base64 to blob
+                const byteCharacters = atob(image.data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'image/png' });
+
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `redacted_${baseName}_page_${image.pageNumber}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            showStatus(`Downloaded ${images.length} redacted image(s) successfully!`, 'success');
         });
 
         // Close preview button handler

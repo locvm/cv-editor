@@ -2,6 +2,7 @@ const { extractPIICoordinates } = require("../services/pdfExtractor");
 const { redactPDF, getRedactionStats } = require("../services/pdfRedactor");
 const { checkPDFEncryption } = require("../middleware/pdfValidator");
 const { getUserFriendlyError } = require("../middleware/errorHandler");
+const { convertPDFToImages, getTotalImageSize } = require("../services/pdfToImage");
 
 /**
  * Get the editor UI page
@@ -70,37 +71,30 @@ const redactPDF_handler = async (req, res) => {
       `Found PII: ${stats.totalRedactions} items (${stats.emails} emails, ${stats.phones} phones)`,
     );
 
-    const redactedPdfBuffer = await redactPDF(req.file.buffer, piiItems);
+    // Redact PDF without encryption (since we'll convert to images)
+    const redactedPdfBuffer = await redactPDF(req.file.buffer, piiItems, { skipEncryption: true });
+
+    // Convert redacted PDF to PNG images (one per page)
+    console.log('Converting redacted PDF to PNG images...');
+    const images = await convertPDFToImages(redactedPdfBuffer, { scale: 2.0 });
+    const totalImageSize = getTotalImageSize(images);
+
     const processingTime = Date.now() - startTime;
 
-    // Check if client wants download or data response
-    // Default is JSON response for database storage
-    const wantsDownload = req.query.download === "true";
+    console.log(`Conversion complete: ${images.length} images, total size ${totalImageSize} bytes`);
 
-    if (wantsDownload) {
-      // Return as downloadable PDF
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="redacted_${req.file.originalname}"`,
-      );
-      res.setHeader("Content-Length", redactedPdfBuffer.length);
-      res.setHeader("X-Redaction-Stats", JSON.stringify(stats));
-      res.setHeader("X-Processing-Time", processingTime);
-      res.send(redactedPdfBuffer);
-    } else {
-      // Return as JSON with base64-encoded PDF for database storage
-      res.json({
-        success: true,
-        filename: `redacted_${req.file.originalname}`,
-        originalFilename: req.file.originalname,
-        pdf: redactedPdfBuffer.toString("base64"),
-        mimeType: "application/pdf",
-        size: redactedPdfBuffer.length,
-        statistics: stats,
-        processingTime: processingTime,
-      });
-    }
+    // Return images as JSON with base64-encoded data
+    res.json({
+      success: true,
+      message: `Successfully redacted ${stats.totalRedactions} item(s) from ${req.file.originalname}`,
+      originalFilename: req.file.originalname,
+      format: "png",
+      pageCount: images.length,
+      images: images,
+      totalSize: totalImageSize,
+      statistics: stats,
+      processingTime: processingTime,
+    });
   } catch (error) {
     console.error("Error processing PDF:", error);
     const friendlyError = getUserFriendlyError(error);

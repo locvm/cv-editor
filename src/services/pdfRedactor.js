@@ -4,17 +4,67 @@
  */
 
 const { PDFDocument, rgb } = require('pdf-lib');
+const { encrypt } = require('node-qpdf2');
+const fs = require('fs').promises;
+const path = require('path');
+const os = require('os');
 
 // Light gray color for redaction rectangles (RGB: 211, 211, 211)
 const REDACTION_COLOR = rgb(211 / 255, 211 / 255, 211 / 255);
 
 /**
+ * Apply encryption to PDF to disable printing and copying
+ * @param {Buffer} pdfBuffer - PDF buffer to encrypt
+ * @returns {Promise<Buffer>} Encrypted PDF buffer
+ */
+async function applyPDFEncryption(pdfBuffer) {
+  const tempDir = os.tmpdir();
+  const inputPath = path.join(tempDir, `input-${Date.now()}.pdf`);
+  const outputPath = path.join(tempDir, `output-${Date.now()}.pdf`);
+
+  try {
+    // Write input buffer to temp file
+    await fs.writeFile(inputPath, pdfBuffer);
+
+    // Apply encryption with qpdf
+    await encrypt(inputPath, {
+      outputFile: outputPath,
+      password: '', // No password required to open
+      restrictions: {
+        print: 'none', // Disable printing completely
+        modify: 'none', // Disable all modifications
+        extract: 'n', // Disable text/image extraction (copying)
+        useAes: 'y', // Use AES encryption (more secure)
+        accessibility: 'y' // Allow screen readers for accessibility
+      }
+    });
+
+    // Read encrypted output
+    const encryptedBuffer = await fs.readFile(outputPath);
+
+    // Clean up temp files
+    await fs.unlink(inputPath).catch(() => {});
+    await fs.unlink(outputPath).catch(() => {});
+
+    return encryptedBuffer;
+  } catch (error) {
+    // Clean up temp files on error
+    await fs.unlink(inputPath).catch(() => {});
+    await fs.unlink(outputPath).catch(() => {});
+    throw error;
+  }
+}
+
+/**
  * Redact PII from PDF by removing text and adding visual overlays
  * @param {Buffer} pdfBuffer - Original PDF buffer
  * @param {Array} piiItems - Array of pages with PII items to redact
+ * @param {Object} options - Optional settings
+ * @param {boolean} options.skipEncryption - Skip PDF encryption (useful when converting to images)
  * @returns {Promise<Buffer>} Redacted PDF buffer
  */
-async function redactPDF(pdfBuffer, piiItems) {
+async function redactPDF(pdfBuffer, piiItems, options = {}) {
+  const { skipEncryption = false } = options;
   try {
     // First, check if the PDF is encrypted
     let isEncrypted = false;
@@ -125,7 +175,22 @@ async function redactPDF(pdfBuffer, piiItems) {
       }
     }
 
-    const outputBuffer = Buffer.from(redactedPdfBytes);
+    let outputBuffer = Buffer.from(redactedPdfBytes);
+
+    // Apply encryption to disable printing and copying (unless skipped)
+    if (!skipEncryption) {
+      try {
+        console.log('Applying PDF encryption to disable copy/print permissions');
+        outputBuffer = await applyPDFEncryption(outputBuffer);
+        console.log('PDF encryption applied successfully');
+      } catch (encryptError) {
+        console.error('Failed to apply encryption:', encryptError.message);
+        // Continue without encryption rather than failing the entire operation
+        console.warn('Continuing without encryption restrictions');
+      }
+    } else {
+      console.log('Skipping PDF encryption (will convert to images)');
+    }
 
     // Validate output PDF
     console.log(`Output PDF size: ${outputBuffer.length} bytes (input was ${pdfBuffer.length} bytes)`);
