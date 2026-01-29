@@ -3,7 +3,7 @@ module.exports = {
   coverageDirectory: "coverage",
   collectCoverageFrom: [
     "src/**/*.js",
-    "server.js",
+    "index.js",
     "!src/**/*.test.js",
     "!**/node_modules/**",
   ],

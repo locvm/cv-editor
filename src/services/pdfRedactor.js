@@ -3,11 +3,11 @@
  * Uses pdf-lib to remove text and add visual overlays
  */
 
-const { PDFDocument, rgb } = require('pdf-lib');
-const { encrypt } = require('node-qpdf2');
-const fs = require('fs').promises;
-const path = require('path');
-const os = require('os');
+const { PDFDocument, rgb } = require("pdf-lib");
+// const { encrypt } = require('node-qpdf2'); // Moved to dynamic import
+const fs = require("fs").promises;
+const path = require("path");
+const os = require("os");
 
 // Light gray color for redaction rectangles (RGB: 211, 211, 211)
 const REDACTION_COLOR = rgb(211 / 255, 211 / 255, 211 / 255);
@@ -18,6 +18,7 @@ const REDACTION_COLOR = rgb(211 / 255, 211 / 255, 211 / 255);
  * @returns {Promise<Buffer>} Encrypted PDF buffer
  */
 async function applyPDFEncryption(pdfBuffer) {
+  const { encrypt } = await import("node-qpdf2");
   const tempDir = os.tmpdir();
   const inputPath = path.join(tempDir, `input-${Date.now()}.pdf`);
   const outputPath = path.join(tempDir, `output-${Date.now()}.pdf`);
@@ -29,14 +30,14 @@ async function applyPDFEncryption(pdfBuffer) {
     // Apply encryption with qpdf
     await encrypt(inputPath, {
       outputFile: outputPath,
-      password: '', // No password required to open
+      password: "", // No password required to open
       restrictions: {
-        print: 'none', // Disable printing completely
-        modify: 'none', // Disable all modifications
-        extract: 'n', // Disable text/image extraction (copying)
-        useAes: 'y', // Use AES encryption (more secure)
-        accessibility: 'y' // Allow screen readers for accessibility
-      }
+        print: "none", // Disable printing completely
+        modify: "none", // Disable all modifications
+        extract: "n", // Disable text/image extraction (copying)
+        useAes: "y", // Use AES encryption (more secure)
+        accessibility: "y", // Allow screen readers for accessibility
+      },
     });
 
     // Read encrypted output
@@ -73,35 +74,42 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
     try {
       pdfDoc = await PDFDocument.load(pdfBuffer, {
         updateMetadata: false,
-        ignoreEncryption: false
+        ignoreEncryption: false,
       });
     } catch (error) {
-      if (error.message.includes('encrypted')) {
+      if (error.message.includes("encrypted")) {
         isEncrypted = true;
-        console.warn('PDF is encrypted - this may cause issues with redaction');
+        console.warn("PDF is encrypted - this may cause issues with redaction");
 
         // Try to load with ignoreEncryption
         try {
           pdfDoc = await PDFDocument.load(pdfBuffer, {
             updateMetadata: false,
-            ignoreEncryption: true
+            ignoreEncryption: true,
           });
 
           // Try to copy to a new document to remove encryption
-          console.log('Attempting to remove encryption by copying to new document');
+          console.log(
+            "Attempting to remove encryption by copying to new document",
+          );
           const newPdfDoc = await PDFDocument.create();
-          const pages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+          const pages = await newPdfDoc.copyPages(
+            pdfDoc,
+            pdfDoc.getPageIndices(),
+          );
 
           for (const page of pages) {
             newPdfDoc.addPage(page);
           }
 
           pdfDoc = newPdfDoc;
-          console.log('Successfully removed encryption');
+          console.log("Successfully removed encryption");
           isEncrypted = false;
         } catch (decryptError) {
-          console.error('Failed to remove encryption:', decryptError.message);
-          throw new Error('This PDF is encrypted/password-protected and cannot be processed. Please remove the password protection and try again.');
+          console.error("Failed to remove encryption:", decryptError.message);
+          throw new Error(
+            "This PDF is encrypted/password-protected and cannot be processed. Please remove the password protection and try again.",
+          );
         }
       } else {
         throw error;
@@ -112,7 +120,7 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
 
     // Validate input PDF
     if (originalPageCount === 0) {
-      throw new Error('Input PDF has no pages');
+      throw new Error("Input PDF has no pages");
     }
 
     // Process each page with PII
@@ -132,11 +140,11 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
         page.drawRectangle({
           x: item.x - padding,
           y: pageHeight - item.y - item.height - padding,
-          width: item.width + (padding * 2),
-          height: item.height + (padding * 2),
+          width: item.width + padding * 2,
+          height: item.height + padding * 2,
           color: REDACTION_COLOR,
           opacity: 1.0,
-          borderWidth: 0
+          borderWidth: 0,
         });
       }
     }
@@ -146,31 +154,34 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
 
     // Try Strategy 1: useObjectStreams: false (most compatible)
     try {
-      console.log('Attempting save with useObjectStreams: false');
+      console.log("Attempting save with useObjectStreams: false");
       redactedPdfBytes = await pdfDoc.save({
         useObjectStreams: false,
-        addDefaultPage: false
+        addDefaultPage: false,
       });
     } catch (err1) {
-      console.warn('Strategy 1 failed:', err1.message);
+      console.warn("Strategy 1 failed:", err1.message);
 
       // Try Strategy 2: Default save options
       try {
-        console.log('Attempting save with default options');
+        console.log("Attempting save with default options");
         redactedPdfBytes = await pdfDoc.save();
       } catch (err2) {
-        console.warn('Strategy 2 failed:', err2.message);
+        console.warn("Strategy 2 failed:", err2.message);
 
         // Try Strategy 3: With object streams enabled
         try {
-          console.log('Attempting save with useObjectStreams: true');
+          console.log("Attempting save with useObjectStreams: true");
           redactedPdfBytes = await pdfDoc.save({
             useObjectStreams: true,
-            addDefaultPage: false
+            addDefaultPage: false,
           });
         } catch (err3) {
-          console.error('All save strategies failed');
-          throw new Error('Failed to save redacted PDF after trying multiple strategies: ' + err3.message);
+          console.error("All save strategies failed");
+          throw new Error(
+            "Failed to save redacted PDF after trying multiple strategies: " +
+              err3.message,
+          );
         }
       }
     }
@@ -180,41 +191,47 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
     // Apply encryption to disable printing and copying (unless skipped)
     if (!skipEncryption) {
       try {
-        console.log('Applying PDF encryption to disable copy/print permissions');
+        console.log(
+          "Applying PDF encryption to disable copy/print permissions",
+        );
         outputBuffer = await applyPDFEncryption(outputBuffer);
-        console.log('PDF encryption applied successfully');
+        console.log("PDF encryption applied successfully");
       } catch (encryptError) {
-        console.error('Failed to apply encryption:', encryptError.message);
+        console.error("Failed to apply encryption:", encryptError.message);
         // Continue without encryption rather than failing the entire operation
-        console.warn('Continuing without encryption restrictions');
+        console.warn("Continuing without encryption restrictions");
       }
     } else {
-      console.log('Skipping PDF encryption (will convert to images)');
+      console.log("Skipping PDF encryption (will convert to images)");
     }
 
     // Validate output PDF
-    console.log(`Output PDF size: ${outputBuffer.length} bytes (input was ${pdfBuffer.length} bytes)`);
+    console.log(
+      `Output PDF size: ${outputBuffer.length} bytes (input was ${pdfBuffer.length} bytes)`,
+    );
 
     // Check if output is suspiciously small (less than 200 bytes is likely corrupted)
     if (outputBuffer.length < 200) {
-      throw new Error('Output PDF is too small and likely corrupted');
+      throw new Error("Output PDF is too small and likely corrupted");
     }
 
     // Verify the output PDF can be loaded
     try {
       const verifyDoc = await PDFDocument.load(outputBuffer, {
-        ignoreEncryption: true
+        ignoreEncryption: true,
       });
       const outputPageCount = verifyDoc.getPageCount();
 
       console.log(`Output PDF validation: ${outputPageCount} pages`);
 
       if (outputPageCount === 0) {
-        throw new Error('Output PDF has no pages');
+        throw new Error("Output PDF has no pages");
       }
 
       if (outputPageCount !== originalPageCount) {
-        console.warn(`Page count mismatch: input had ${originalPageCount} pages, output has ${outputPageCount} pages`);
+        console.warn(
+          `Page count mismatch: input had ${originalPageCount} pages, output has ${outputPageCount} pages`,
+        );
       }
 
       // Additional validation: check if pages have content
@@ -226,16 +243,15 @@ async function redactPDF(pdfBuffer, piiItems, options = {}) {
           throw new Error(`Page ${i + 1} has invalid dimensions`);
         }
       }
-
     } catch (verifyError) {
-      console.error('Output PDF validation failed:', verifyError);
-      throw new Error('Output PDF validation failed: ' + verifyError.message);
+      console.error("Output PDF validation failed:", verifyError);
+      throw new Error("Output PDF validation failed: " + verifyError.message);
     }
 
     return outputBuffer;
   } catch (error) {
-    console.error('Error redacting PDF:', error);
-    throw new Error('Failed to redact PDF: ' + error.message);
+    console.error("Error redacting PDF:", error);
+    throw new Error("Failed to redact PDF: " + error.message);
   }
 }
 
@@ -255,19 +271,19 @@ async function removeTextFromPage(page, item, pageHeight) {
 
     // Get content stream data
     let content;
-    if (contentStream.constructor.name === 'PDFArray') {
+    if (contentStream.constructor.name === "PDFArray") {
       // Multiple content streams - concatenate them
       const streams = contentStream.asArray();
       const decoded = [];
       for (const stream of streams) {
-        if (stream && typeof stream.contents === 'function') {
+        if (stream && typeof stream.contents === "function") {
           decoded.push(stream.contents());
         }
       }
-      content = Buffer.concat(decoded).toString('latin1');
-    } else if (typeof contentStream.contents === 'function') {
+      content = Buffer.concat(decoded).toString("latin1");
+    } else if (typeof contentStream.contents === "function") {
       // Single content stream
-      content = contentStream.contents().toString('latin1');
+      content = contentStream.contents().toString("latin1");
     } else {
       return;
     }
@@ -284,27 +300,27 @@ async function removeTextFromPage(page, item, pageHeight) {
     // This is a simplified approach - in production, you'd need a proper PDF parser
     const textPattern = new RegExp(
       `\\(${escapeRegExp(item.text)}\\)\\s*Tj`,
-      'g'
+      "g",
     );
 
     // Remove the text by replacing with empty string
-    let modifiedContent = content.replace(textPattern, '() Tj');
+    let modifiedContent = content.replace(textPattern, "() Tj");
 
     // Also try to match the text in TJ array format
     const textArrayPattern = new RegExp(
       `\\[\\(${escapeRegExp(item.text)}\\)\\]\\s*TJ`,
-      'g'
+      "g",
     );
-    modifiedContent = modifiedContent.replace(textArrayPattern, '[()] TJ');
+    modifiedContent = modifiedContent.replace(textArrayPattern, "[()] TJ");
 
     // If content was modified, update the stream
     if (modifiedContent !== content) {
-      const newContentStream = Buffer.from(modifiedContent, 'latin1');
+      const newContentStream = Buffer.from(modifiedContent, "latin1");
 
-      if (contentStream.constructor.name === 'PDFArray') {
+      if (contentStream.constructor.name === "PDFArray") {
         // For arrays, replace the first stream
         const streams = contentStream.asArray();
-        if (streams[0] && typeof streams[0].contents === 'function') {
+        if (streams[0] && typeof streams[0].contents === "function") {
           streams[0].contents = () => newContentStream;
         }
       } else {
@@ -312,7 +328,7 @@ async function removeTextFromPage(page, item, pageHeight) {
       }
     }
   } catch (error) {
-    console.warn('Could not remove text from content stream:', error.message);
+    console.warn("Could not remove text from content stream:", error.message);
     // Don't throw - we'll still add the visual overlay
   }
 }
@@ -323,7 +339,7 @@ async function removeTextFromPage(page, item, pageHeight) {
  * @returns {string} Escaped string
  */
 function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -336,12 +352,12 @@ function getRedactionStats(piiItems) {
   let phoneCount = 0;
   let totalItems = 0;
 
-  piiItems.forEach(pageData => {
-    pageData.items.forEach(item => {
+  piiItems.forEach((pageData) => {
+    pageData.items.forEach((item) => {
       totalItems++;
-      if (item.type === 'email') {
+      if (item.type === "email") {
         emailCount++;
-      } else if (item.type === 'phone') {
+      } else if (item.type === "phone") {
         phoneCount++;
       }
     });
@@ -351,11 +367,11 @@ function getRedactionStats(piiItems) {
     totalRedactions: totalItems,
     emails: emailCount,
     phones: phoneCount,
-    pagesAffected: piiItems.length
+    pagesAffected: piiItems.length,
   };
 }
 
 module.exports = {
   redactPDF,
-  getRedactionStats
+  getRedactionStats,
 };

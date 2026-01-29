@@ -4,15 +4,11 @@
  */
 
 const request = require("supertest");
-const { app, server } = require("../server");
+const { app, server } = require("../index");
 const fs = require("fs");
 const path = require("path");
 
 describe("API Endpoints", () => {
-  afterAll((done) => {
-    server.close(done);
-  });
-
   describe("GET /health", () => {
     test("should return 200 and health status", async () => {
       const response = await request(app)
