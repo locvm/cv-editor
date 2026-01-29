@@ -102,9 +102,13 @@ app.use(multerErrorHandler(MAX_FILE_SIZE));
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
-// Start server
-const server = app.listen(PORT, "0.0.0.0", () => {
-  displayBanner(PORT);
-});
-
-module.exports = { app, server };
+// Start server only if not in Vercel serverless environment
+if (process.env.VERCEL !== "1") {
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    displayBanner(PORT);
+  });
+  module.exports = { app, server };
+} else {
+  // Export app for Vercel serverless
+  module.exports = app;
+}
