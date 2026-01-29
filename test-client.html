@@ -290,9 +290,9 @@
     </div>
 
     <script>
-        // Auto-detect server URL: use deployed URL if on Vercel, otherwise localhost
-        const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? 'http://localhost:3000'
+        // Auto-detect server URL: use localhost if opened locally (file:// or localhost), otherwise production
+        const SERVER_URL = window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3004'
             : window.location.origin;
 
         const uploadArea = document.getElementById('uploadArea');
