@@ -48,7 +48,16 @@ app.get("/test-client.html", (req, res) => {
 
 // Home page
 app.get("/", (req, res) => {
-  res.json({ title: "PDF Privacy Redaction Server" });
+  res.json({
+    status: "ok",
+    service: "PDF Privacy Redaction Server",
+    version: "1.0.0",
+    message: "Welcome to the PDF Redaction Server",
+    availableRoutes: {
+      ui: "/editor - Interactive PDF redaction editor",
+      api: "/api/editor - PDF editor API",
+    },
+  });
 });
 
 // Health check

@@ -2,10 +2,10 @@
   "name": "cv-editor",
   "version": "1.0.0",
   "description": "PDF Privacy Redaction Server - Removes phone numbers and emails from PDF documents",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "node index.js",
+    "dev": "node --watch index.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
     "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:patterns": "jest tests/patterns.test.js",
