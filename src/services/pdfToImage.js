@@ -1,12 +1,25 @@
 /**
  * PDF to Image Conversion Service
- * Converts PDF pages to PNG images using pdftoppm (from poppler)
+ * Converts PDF pages to PNG images using pdfjs-dist and @napi-rs/canvas
+ * This implementation is compatible with Vercel and other serverless environments
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs').promises;
-const path = require('path');
-const os = require('os');
+const { createCanvas } = require('@napi-rs/canvas');
+
+// Lazy-loaded pdfjs-dist module (loaded once on first use)
+let pdfjsLib = null;
+
+/**
+ * Get or initialize pdfjs-dist module
+ * @returns {Promise<Object>} pdfjs-dist module
+ */
+async function getPdfJsLib() {
+  if (!pdfjsLib) {
+    // Dynamic import for ES module
+    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  }
+  return pdfjsLib;
+}
 
 /**
  * Convert PDF buffer to PNG images (one per page)
@@ -17,46 +30,56 @@ const os = require('os');
  */
 async function convertPDFToImages(pdfBuffer, options = {}) {
   const { scale = 2.0 } = options;
-  const dpi = Math.floor(72 * scale); // Convert scale to DPI (72 is base PDF DPI)
-
-  const tempDir = os.tmpdir();
-  const tempPdfPath = path.join(tempDir, `temp-pdf-${Date.now()}.pdf`);
-  const outputPrefix = path.join(tempDir, `output-${Date.now()}`);
 
   try {
-    console.log(`Converting PDF to PNG images at ${scale}x scale (${dpi} DPI)`);
+    console.log(`Converting PDF to PNG images at ${scale}x scale`);
 
-    // Write PDF buffer to temp file
-    await fs.writeFile(tempPdfPath, pdfBuffer);
+    // Get pdfjs-dist module
+    const pdfjs = await getPdfJsLib();
 
-    // Use pdftoppm to convert PDF to PNG images
-    // -png: output as PNG
-    // -r: resolution (DPI)
-    execSync(`pdftoppm -png -r ${dpi} "${tempPdfPath}" "${outputPrefix}"`, {
-      stdio: 'pipe'
+    // Load PDF document
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(pdfBuffer),
+      useSystemFonts: true,
+      standardFontDataUrl: null, // Avoid loading external font data
+      useWorkerFetch: false, // Disable worker in Node.js
+      isEvalSupported: false, // Disable eval for security
+      disableWorker: true, // Disable worker for Node.js environment
     });
 
-    // Find all generated PNG files
-    const files = await fs.readdir(tempDir);
-    const outputFiles = files
-      .filter(f => f.startsWith(path.basename(outputPrefix)) && f.endsWith('.png'))
-      .sort(); // Sort to maintain page order
-
+    const pdfDocument = await loadingTask.promise;
+    const numPages = pdfDocument.numPages;
     const images = [];
 
-    // Read each PNG file and convert to base64
-    for (let i = 0; i < outputFiles.length; i++) {
-      const filePath = path.join(tempDir, outputFiles[i]);
-      const imageBuffer = await fs.readFile(filePath);
+    console.log(`PDF loaded: ${numPages} page(s)`);
+
+    // Process each page
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum);
+
+      // Get viewport at the desired scale
+      const viewport = page.getViewport({ scale });
+      const width = Math.floor(viewport.width);
+      const height = Math.floor(viewport.height);
+
+      // Create canvas
+      const canvas = createCanvas(width, height);
+      const context = canvas.getContext('2d');
+
+      // Render PDF page to canvas
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      await page.render(renderContext).promise;
+
+      // Convert canvas to PNG buffer
+      const imageBuffer = await canvas.encode('png');
       const base64Image = imageBuffer.toString('base64');
 
-      // Get image dimensions (basic approach)
-      // PNG files store dimensions in IHDR chunk (bytes 16-23)
-      const width = imageBuffer.readUInt32BE(16);
-      const height = imageBuffer.readUInt32BE(20);
-
       images.push({
-        pageNumber: i + 1,
+        pageNumber: pageNum,
         width: width,
         height: height,
         data: base64Image,
@@ -64,33 +87,17 @@ async function convertPDFToImages(pdfBuffer, options = {}) {
         size: imageBuffer.length
       });
 
-      console.log(`Page ${i + 1}/${outputFiles.length} converted - ${imageBuffer.length} bytes`);
+      console.log(`Page ${pageNum}/${numPages} converted - ${imageBuffer.length} bytes`);
 
-      // Clean up individual PNG file
-      await fs.unlink(filePath).catch(() => {});
+      // Clean up
+      page.cleanup();
     }
 
-    // Clean up temp PDF file
-    await fs.unlink(tempPdfPath).catch(() => {});
+    // Clean up document
+    await pdfDocument.destroy();
 
     return images;
   } catch (error) {
-    // Clean up temp files on error
-    await fs.unlink(tempPdfPath).catch(() => {});
-
-    // Clean up any generated PNG files
-    try {
-      const files = await fs.readdir(tempDir);
-      const outputFiles = files.filter(f =>
-        f.startsWith(path.basename(outputPrefix)) && f.endsWith('.png')
-      );
-      for (const file of outputFiles) {
-        await fs.unlink(path.join(tempDir, file)).catch(() => {});
-      }
-    } catch (e) {
-      // Ignore cleanup errors
-    }
-
     console.error('Error converting PDF to images:', error);
     throw new Error('Failed to convert PDF to images: ' + error.message);
   }
