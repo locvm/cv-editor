@@ -1,6 +1,6 @@
 /**
  * PDF Text Extraction Service
- * Uses pdfjs-dist to extract text and coordinates from PDF documents
+ * Uses unpdf (serverless-optimized PDF.js) to extract text and coordinates from PDF documents
  *
  * IMPORTANT: This service extracts PII (Personally Identifiable Information)
  * from PDFs including emails and phone numbers with their approximate coordinates.
@@ -14,41 +14,30 @@
  * - For production use with complex PDFs, consider implementing full matrix transforms
  */
 
-// Use dynamic import for ESM module in CommonJS environment
+// Use unpdf for serverless-compatible PDF parsing
 let pdfjsLib;
 const { containsPII, findEmails, findPhones } = require("../utils/patterns");
 
-// Canvas is optionally required for PDF rendering operations
-// Text extraction works without it (serverless-friendly)
-try {
-  require("canvas");
-} catch (e) {
-  // Canvas not available - running in serverless/text-only mode
-  // This is expected in Vercel and similar environments
-}
-
 /**
- * Initialize pdfjs-dist library using dynamic import
+ * Initialize unpdf library using dynamic import
  * Uses lazy loading pattern - only imports once on first call
+ *
+ * unpdf is a serverless-optimized build of PDF.js that works across
+ * all JavaScript runtimes including Node.js, Vercel, and Cloudflare Workers
  *
  * In test environments, this will use the mocked version from jest.setup.js
  *
- * @returns {Promise<Object>} The pdfjs-dist library object
+ * @returns {Promise<Object>} The PDF.js library object from unpdf
  */
 async function initPdfjs() {
   if (!pdfjsLib) {
     try {
-      // Use legacy build for Node.js environments (modern build requires browser APIs)
-      pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-      // Configure worker for Node.js server-side usage
-      // Point to the worker file in the legacy build
-      const workerPath =
-        require.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+      // Use unpdf's getResolvedPDFJS to get the serverless-compatible PDF.js module
+      const { getResolvedPDFJS } = await import("unpdf");
+      pdfjsLib = await getResolvedPDFJS();
     } catch (error) {
       // If dynamic import fails (e.g., in Jest), throw a clear error
-      throw new Error(`Failed to load pdfjs-dist: ${error.message}`);
+      throw new Error(`Failed to load unpdf: ${error.message}`);
     }
   }
   return pdfjsLib;
@@ -75,11 +64,11 @@ async function initPdfjs() {
  */
 async function extractPIICoordinates(pdfBuffer) {
   try {
-    // Initialize pdfjs library
-    await initPdfjs();
+    // Initialize unpdf library (returns PDF.js module)
+    const pdfjs = await initPdfjs();
 
-    // Load the PDF document
-    const loadingTask = pdfjsLib.getDocument({
+    // Load the PDF document using PDF.js getDocument method
+    const loadingTask = pdfjs.getDocument({
       data: new Uint8Array(pdfBuffer),
       useSystemFonts: true, // Use system fonts for better text extraction
       disableFontFace: false, // Allow embedded fonts
@@ -174,9 +163,9 @@ async function extractPIICoordinates(pdfBuffer) {
       throw new Error("PDF is encrypted and cannot be processed");
     } else if (
       error.message &&
-      error.message.includes("Failed to load pdfjs-dist")
+      error.message.includes("Failed to load unpdf")
     ) {
-      // Re-throw pdfjs loading errors
+      // Re-throw unpdf loading errors
       throw error;
     } else {
       // Include original error message for debugging
@@ -206,10 +195,10 @@ async function extractPIICoordinates(pdfBuffer) {
  */
 async function extractAllText(pdfBuffer) {
   try {
-    // Initialize pdfjs-dist
-    await initPdfjs();
+    // Initialize unpdf (returns PDF.js module)
+    const pdfjs = await initPdfjs();
 
-    const loadingTask = pdfjsLib.getDocument({
+    const loadingTask = pdfjs.getDocument({
       data: new Uint8Array(pdfBuffer),
     });
 
