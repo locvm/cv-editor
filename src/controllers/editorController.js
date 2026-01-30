@@ -3,6 +3,7 @@ const { redactPDF, getRedactionStats } = require("../services/pdfRedactor");
 const { checkPDFEncryption } = require("../middleware/pdfValidator");
 const { getUserFriendlyError } = require("../middleware/errorHandler");
 const { convertPDFToImages, getTotalImageSize } = require("../services/pdfToImage");
+const { imagesToPDF } = require("../services/imagesToPDF");
 
 /**
  * Get the editor UI page
@@ -77,24 +78,25 @@ const redactPDF_handler = async (req, res) => {
     // Convert redacted PDF to PNG images (one per page)
     console.log('Converting redacted PDF to PNG images...');
     const images = await convertPDFToImages(redactedPdfBuffer, { scale: 2.0 });
-    const totalImageSize = getTotalImageSize(images);
+
+    // Convert images back to PDF
+    console.log('Converting PNG images back to PDF...');
+    const finalPdfBytes = await imagesToPDF(images);
 
     const processingTime = Date.now() - startTime;
 
-    console.log(`Conversion complete: ${images.length} images, total size ${totalImageSize} bytes`);
+    console.log(`PDF redaction complete: ${images.length} pages, final PDF size ${finalPdfBytes.length} bytes`);
 
-    // Return images as JSON with base64-encoded data
-    res.json({
-      success: true,
-      message: `Successfully redacted ${stats.totalRedactions} item(s) from ${req.file.originalname}`,
-      originalFilename: req.file.originalname,
-      format: "png",
-      pageCount: images.length,
-      images: images,
-      totalSize: totalImageSize,
-      statistics: stats,
-      processingTime: processingTime,
+    // Send PDF as binary with proper headers
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${req.file.originalname}"`,
+      'Content-Length': finalPdfBytes.length,
+      'X-Redaction-Stats': JSON.stringify(stats),
+      'X-Processing-Time': processingTime,
     });
+
+    res.send(Buffer.from(finalPdfBytes));
   } catch (error) {
     console.error("Error processing PDF:", error);
     const friendlyError = getUserFriendlyError(error);

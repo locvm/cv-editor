@@ -295,13 +295,13 @@
                     <iframe id="originalPreview"></iframe>
                 </div>
                 <div class="preview-box">
-                    <h4>Redacted Images (PNG)</h4>
-                    <div class="image-container" id="redactedPreview"></div>
+                    <h4>Redacted PDF</h4>
+                    <iframe id="redactedPreview"></iframe>
                 </div>
             </div>
             <div class="preview-actions">
                 <button class="button" id="downloadBtn" style="display: none;">
-                    Download Images as ZIP
+                    Download Redacted PDF
                 </button>
                 <button class="button analyze" id="closePreviewBtn">
                     Close Preview
@@ -402,35 +402,38 @@
                 });
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.message || 'Failed to redact PDF');
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to redact PDF');
                 }
 
-                // Get JSON response with images
-                const data = await response.json();
+                // Get stats from response headers
+                const statsHeader = response.headers.get('X-Redaction-Stats');
+                const processingTime = parseInt(response.headers.get('X-Processing-Time')) || 0;
+                const stats = statsHeader ? JSON.parse(statsHeader) : {};
 
-                console.log('Response data:', {
-                    success: data.success,
-                    format: data.format,
-                    pageCount: data.pageCount,
-                    totalSize: data.totalSize,
-                    statistics: data.statistics
+                // Get the PDF blob
+                const pdfBlob = await response.blob();
+
+                if (pdfBlob.size === 0) {
+                    throw new Error('Received empty PDF');
+                }
+
+                redactedPdfBlob = pdfBlob;
+
+                console.log('Received redacted PDF:', {
+                    size: pdfBlob.size,
+                    type: pdfBlob.type,
+                    statistics: stats,
+                    processingTime: processingTime
                 });
 
-                // Verify we got images
-                if (!data.images || data.images.length === 0) {
-                    throw new Error('No images received from server');
-                }
+                // Show file info
+                showFileInfo(stats, processingTime);
 
-                // Store the images globally
-                redactedPdfBlob = data;
+                // Show preview with the redacted PDF
+                showPreview(selectedFile, pdfBlob);
 
-                // Show statistics
-                showFileInfo(data.statistics, data.processingTime);
-                showStatus(data.message || `Successfully redacted ${data.statistics.totalRedactions} items`, 'success');
-
-                // Show preview
-                showPreview(selectedFile, data.images);
+                showStatus(`Successfully redacted ${stats.totalRedactions || 0} item(s)!`, 'success');
 
             } catch (error) {
                 showStatus(`Error: ${error.message}`, 'error');
@@ -533,37 +536,25 @@
             spinner.style.display = 'none';
         }
 
-        function showPreview(originalFile, redactedImages) {
+        function showPreview(originalFile, redactedPdf) {
             console.log('showPreview called with:', {
-                originalFile: { name: originalFile.name, size: originalFile.size, type: originalFile.type },
-                redactedImages: { count: redactedImages.length }
+                originalFile: { name: originalFile.name, size: originalFile.size },
+                redactedPdf: { size: redactedPdf.size, type: redactedPdf.type }
             });
 
-            // Create object URL for original PDF
+            // Create object URLs for PDFs
             const originalUrl = URL.createObjectURL(originalFile);
+            const redactedUrl = URL.createObjectURL(redactedPdf);
 
-            // Set iframe source for original PDF
+            // Set iframe sources for PDFs
             originalPreview.src = originalUrl;
-
-            // Clear previous images
-            redactedPreview.innerHTML = '';
-
-            // Create img elements for each redacted page
-            redactedImages.forEach((image, index) => {
-                const img = document.createElement('img');
-                img.src = `data:${image.mimeType};base64,${image.data}`;
-                img.alt = `Redacted page ${image.pageNumber}`;
-                img.title = `Page ${image.pageNumber} - ${image.width}x${image.height}px`;
-
-                img.onload = () => console.log(`Redacted image ${index + 1} loaded successfully`);
-                img.onerror = (e) => console.error(`Redacted image ${index + 1} failed to load:`, e);
-
-                redactedPreview.appendChild(img);
-            });
+            redactedPreview.src = redactedUrl;
 
             // Add load event listeners for debugging
             originalPreview.onload = () => console.log('Original PDF loaded successfully');
             originalPreview.onerror = (e) => console.error('Original PDF failed to load:', e);
+            redactedPreview.onload = () => console.log('Redacted PDF loaded successfully');
+            redactedPreview.onerror = (e) => console.error('Redacted PDF failed to load:', e);
 
             // Show preview section
             previewSection.style.display = 'block';
@@ -579,46 +570,33 @@
             previewSection.style.display = 'none';
             downloadBtn.style.display = 'none';
 
-            // Clean up object URLs and images
+            // Clean up object URLs
             if (originalPreview.src) {
                 URL.revokeObjectURL(originalPreview.src);
                 originalPreview.src = '';
             }
 
-            // Clear redacted images
-            redactedPreview.innerHTML = '';
+            if (redactedPreview.src) {
+                URL.revokeObjectURL(redactedPreview.src);
+                redactedPreview.src = '';
+            }
         }
 
         // Download button handler
         downloadBtn.addEventListener('click', () => {
-            if (!redactedPdfBlob || !redactedPdfBlob.images) return;
+            if (!redactedPdfBlob) return;
 
-            const images = redactedPdfBlob.images;
-            const baseName = selectedFile.name.replace('.pdf', '');
+            // Download the redacted PDF with original filename
+            const url = URL.createObjectURL(redactedPdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = selectedFile.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
 
-            // Download each image
-            images.forEach((image, index) => {
-                // Convert base64 to blob
-                const byteCharacters = atob(image.data);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], { type: 'image/png' });
-
-                // Create download link
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `redacted_${baseName}_page_${image.pageNumber}.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            });
-
-            showStatus(`Downloaded ${images.length} redacted image(s) successfully!`, 'success');
+            showStatus('Redacted PDF downloaded successfully!', 'success');
         });
 
         // Close preview button handler

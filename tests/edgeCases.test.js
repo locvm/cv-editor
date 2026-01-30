@@ -192,11 +192,13 @@ describe("Edge Cases", () => {
         .attach("file", Buffer.from(pdfBytes), "sizes.pdf")
         .expect(200);
 
-      // Should create redacted PDF successfully (JSON response with images)
-      expect(response.body).toHaveProperty("success");
-      expect(response.body).toHaveProperty("images"); // array of images
-      expect(response.body.format).toBe("png");
-      expect(response.body.statistics.totalRedactions).toBeGreaterThan(0);
+      // Should create redacted PDF successfully (binary PDF response)
+      expect(response.status).toBe(200);
+      expect(response.type).toBe("application/pdf");
+      expect(response.body).toBeInstanceOf(Buffer);
+      expect(response.body.length).toBeGreaterThan(0);
+      const stats = JSON.parse(response.headers["x-redaction-stats"]);
+      expect(stats.totalRedactions).toBeGreaterThan(0);
     });
   });
 
@@ -289,11 +291,14 @@ describe("Edge Cases", () => {
         .attach("file", Buffer.from(pdfBytes), "cv.pdf")
         .expect(200);
 
-      // Should successfully redact - check JSON response
-      expect(response.body.statistics).toBeDefined();
-      expect(response.body.statistics.totalRedactions).toBeGreaterThan(0);
-      expect(response.body).toHaveProperty("images"); // array of images
-      expect(response.body.format).toBe("png");
+      // Should successfully redact - check PDF response
+      expect(response.status).toBe(200);
+      expect(response.type).toBe("application/pdf");
+      expect(response.body).toBeInstanceOf(Buffer);
+      expect(response.body.length).toBeGreaterThan(0);
+      const stats = JSON.parse(response.headers["x-redaction-stats"]);
+      expect(stats).toBeDefined();
+      expect(stats.totalRedactions).toBeGreaterThan(0);
     });
 
     test("should handle CV with email in signature block", async () => {
@@ -362,8 +367,8 @@ describe("Edge Cases", () => {
         .attach("file", Buffer.from(pdfBytes), "quick.pdf")
         .expect(200);
 
-      // Check JSON response for processing time
-      const processingTime = response.body.processingTime;
+      // Check response header for processing time
+      const processingTime = parseInt(response.headers["x-processing-time"]);
 
       // Should process in reasonable time (less than 1 second for small PDF)
       expect(processingTime).toBeDefined();
