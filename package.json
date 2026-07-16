@@ -26,12 +26,12 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.89",
+    "@napi-rs/canvas": "^0.1.100",
     "cors": "^2.8.6",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "helmet": "^8.1.0",
-    "multer": "^2.0.2",
+    "helmet": "^8.3.0",
+    "multer": "^2.2.0",
     "node-qpdf2": "^6.0.0",
     "pdf-lib": "^1.17.1",
     "pdf-to-png-converter": "^3.11.0",
@@ -39,10 +39,10 @@
     "unpdf": "^1.4.0"
   },
   "optionalDependencies": {
-    "canvas": "^3.2.1"
+    "canvas": "^3.2.3"
   },
   "devDependencies": {
-    "jest": "^30.2.0",
+    "jest": "^30.4.2",
     "supertest": "^7.2.2"
   }
 }
