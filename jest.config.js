@@ -8,7 +8,6 @@ module.exports = {
     "!**/node_modules/**",
   ],
   testMatch: ["**/tests/**/*.test.js"],
-  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   coverageThreshold: {
     global: {
       branches: 70,
@@ -18,5 +17,6 @@ module.exports = {
     },
   },
   verbose: true,
+  silent: true,
   testTimeout: 10000,
 };
