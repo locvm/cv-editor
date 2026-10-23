@@ -25,8 +25,6 @@ const { containsPII, findEmails, findPhones } = require("../utils/patterns");
  * unpdf is a serverless-optimized build of PDF.js that works across
  * all JavaScript runtimes including Node.js, Vercel, and Cloudflare Workers
  *
- * In test environments, this will use the mocked version from jest.setup.js
- *
  * @returns {Promise<Object>} The PDF.js library object from unpdf
  */
 async function initPdfjs() {

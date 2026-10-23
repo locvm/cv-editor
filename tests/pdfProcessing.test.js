@@ -203,6 +203,25 @@ describe('PDF Redaction', () => {
     // Should not throw error even with ignoreEncryption option
     await expect(redactPDF(buffer, piiItems)).resolves.toBeDefined();
   });
+
+  test('should strip copy/print restrictions from a protected PDF', async () => {
+    const buffer = fs.readFileSync(path.join(__dirname, 'fixtures/restricted.pdf'));
+
+    const redacted = await redactPDF(buffer, [], { skipEncryption: true });
+
+    const output = await PDFDocument.load(redacted);
+    expect(output.getPageCount()).toBe(1);
+  });
+
+  test('should reject a PDF that needs a password to open', async () => {
+    const buffer = fs.readFileSync(path.join(__dirname, 'fixtures/encrypted.pdf'));
+
+    await expect(redactPDF(buffer, [], { skipEncryption: true })).rejects.toThrow('password-protected');
+  });
+
+  test('should reject input that is not a PDF', async () => {
+    await expect(redactPDF(Buffer.from('not a pdf'), [])).rejects.toThrow('Failed to redact PDF');
+  });
 });
 
 describe('Statistics Generation', () => {

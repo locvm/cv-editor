@@ -7,6 +7,7 @@ const request = require("supertest");
 const { app, server } = require("../index");
 const fs = require("fs");
 const path = require("path");
+const { PDFDocument, StandardFonts } = require("pdf-lib");
 
 describe("API Endpoints", () => {
   describe("GET /health", () => {
@@ -162,6 +163,69 @@ describe("API Endpoints", () => {
         expect(firstItem.coordinates).toHaveProperty("height");
       }
     });
+  });
+
+  describe("Root-level legacy routes", () => {
+    let pdfBuffer;
+
+    beforeAll(async () => {
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([600, 400]);
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      page.drawText("Email: jane.doe@example.com", { x: 50, y: 350, size: 12, font });
+      pdfBuffer = Buffer.from(await pdfDoc.save());
+    });
+
+    test("GET / should return service info", async () => {
+      const response = await request(app).get("/").expect(200);
+
+      expect(response.body).toHaveProperty("status", "ok");
+    });
+
+    test("POST /analyze should find PII in an uploaded PDF", async () => {
+      const response = await request(app)
+        .post("/analyze")
+        .attach("file", pdfBuffer, "cv.pdf")
+        .expect(200);
+
+      expect(response.body.statistics.emails).toBe(1);
+    });
+
+    test("POST /redact should return a redacted PDF", async () => {
+      await request(app)
+        .post("/redact")
+        .attach("file", pdfBuffer, "cv.pdf")
+        .expect(200)
+        .expect("Content-Type", "application/pdf");
+    });
+
+    test.each(["/analyze", "/redact"])(
+      "POST %s should reject non-PDF files",
+      async (route) => {
+        const response = await request(app)
+          .post(route)
+          .attach("file", Buffer.from("not a pdf"), "test.txt")
+          .expect(400);
+
+        expect(response.body.error).toBe("Invalid file type");
+      },
+    );
+  });
+
+  describe("Password-protected PDFs", () => {
+    const encryptedPdf = path.join(__dirname, "fixtures/encrypted.pdf");
+
+    test.each(["/api/editor/analyze", "/api/editor/redact"])(
+      "POST %s should tell the user to remove the password",
+      async (route) => {
+        const response = await request(app)
+          .post(route)
+          .attach("file", encryptedPdf)
+          .expect(400);
+
+        expect(response.body.error).toBe("PDF is Password Protected");
+      },
+    );
   });
 
   describe("Error Handling", () => {
