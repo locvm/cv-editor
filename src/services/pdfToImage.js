@@ -94,7 +94,7 @@ async function convertPDFToImages(pdfBuffer, options = {}) {
     }
 
     // Clean up document
-    await pdfDocument.destroy();
+    await loadingTask.destroy();
 
     return images;
   } catch (error) {
